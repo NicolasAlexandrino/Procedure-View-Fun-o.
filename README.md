@@ -5,6 +5,9 @@
 Este projeto implementa um sistema de biblioteca com Procedures, Views e Funções em PostgreSQL.
 O objetivo é praticar conceitos avançados de banco de dados, incluindo automação de processos, relatórios e regras de negócio.
 
+🗂️Arquivo das Tabelas e Inserts
+[Procedure Sistema de Biblioteca.pdf](https://github.com/user-attachments/files/22245249/Procedure.Sistema.de.Biblioteca.pdf)
+
 🗂️ Estrutura do Banco de Dados
 Tabelas principais
 
