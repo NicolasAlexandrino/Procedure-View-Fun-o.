@@ -1,0 +1,274 @@
+
+-- Criando tabela de autores
+CREATE TABLE autor (
+    id SERIAL PRIMARY KEY,
+    nome VARCHAR(100) NOT NULL
+);
+
+-- Criando tabela de livros
+CREATE TABLE livro (
+    id SERIAL PRIMARY KEY,
+    titulo VARCHAR(150) NOT NULL,
+    id_autor INT NOT NULL REFERENCES autor(id),
+    ano_publicacao INT
+);
+
+-- Criando tabela de usuários
+CREATE TABLE usuario (
+    id SERIAL PRIMARY KEY,
+    nome VARCHAR(100) NOT NULL
+);
+
+-- Criando tabela de empréstimos
+CREATE TABLE emprestimo (
+    id SERIAL PRIMARY KEY,
+    id_usuario INT NOT NULL REFERENCES usuario(id),
+    id_livro INT NOT NULL REFERENCES livro(id),
+    data_emprestimo DATE NOT NULL,
+    data_devolucao DATE
+);
+
+
+-- Inserindo autores
+INSERT INTO autor (nome) VALUES
+('Machado de Assis'),
+('J. K. Rowling'),
+('George Orwell'),
+('Clarice Lispector');
+
+-- Inserindo livros
+INSERT INTO livro (titulo, id_autor, ano_publicacao) VALUES
+('Dom Casmurro', 1, 1899),
+('Harry Potter e a Pedra Filosofal', 2, 1997),
+('1984', 3, 1949),
+('A Hora da Estrela', 4, 1977),
+('Harry Potter e a Câmara Secreta', 2, 1998);
+
+-- Inserindo usuários
+INSERT INTO usuario (nome) VALUES
+('Ana'),
+('Bruno'),
+('Carla'),
+('Diego');
+
+-- Inserindo empréstimos
+INSERT INTO emprestimo (id_usuario, id_livro, data_emprestimo, data_devolucao) VALUES
+(1, 1, '2025-08-01', '2025-08-10'),
+(2, 2, '2025-08-02', NULL),
+(3, 3, '2025-08-05', '2025-08-15'),
+(1, 5, '2025-08-07', NULL),
+(4, 4, '2025-08-08', NULL);
+
+
+--cadastrar usuario
+CREATE PROCEDURE cadastrar_usuario(p_nome VARCHAR)
+LANGUAGE plpgsql AS $$
+BEGIN
+	INSERT INTO usuario(nome) VALUES (p_nome);
+END;
+$$;
+
+CALL cadastrar_usuario('Camila');
+
+SELECT * FROM usuario;
+
+
+--cadastrar livro
+CREATE PROCEDURE cadastrar_livro(p_titulo VARCHAR, p_id_autor INT, p_ano INT)
+LANGUAGE plpgsql AS $$
+BEGIN
+	INSERT INTO livro(titulo, id_autor, ano_publicacao)
+	VALUES (p_titulo, p_id_autor, p_ano);
+END;
+$$;
+
+CALL cadastrar_livro('O conto perdido', 2, 1987);
+
+select * from livro;
+
+
+--Registro de devolucao
+CREATE PROCEDURE registrar_devolucao(p_id INT, p_data DATE)
+LANGUAGE plpgsql AS $$
+BEGIN
+	UPDATE emprestimo
+	SET data_devolucao = p_data
+	WHERE id = p_id;
+END;
+$$;
+
+CALL registrar_devolucao(2, '2025_08_20');
+
+select * from emprestimo;
+
+
+--Excluir usuario e emprestimo
+CREATE PROCEDURE excluir_usuario(p_id INT)
+LANGUAGE plpgsql AS $$
+BEGIN
+	DELETE FROM emprestimo  WHERE id_usuario = p_id;
+	DELETE FROM usuario WHERE id = p_id;
+END;
+$$;
+
+CALL excluir_usuario(2);
+
+select * from usuario;
+
+
+--Livros com autores
+CREATE VIEW livros_com_autores AS
+SELECT l.titulo, a.nome AS autor
+FROM livro l
+JOIN autor a ON l.id_autor =  a.id;
+	
+SELECT * FROM livros_com_autores;
+
+
+--usuarios com emprestimos
+CREATE VIEW usuarios_emprestimo AS
+SELECT u.nome AS usuario, l.titulo
+FROM emprestimo e 
+JOIN usuario u ON e.id_usuario = u.id
+JOIN livro l ON e.id_livro = l.id;
+
+SELECT * FROM usuarios_emprestimo;
+
+--emprestimos em aberto
+CREATE VIEW emprestimos_aberto AS
+SELECT * FROM emprestimo
+WHERE data_devolucao IS NULL;
+
+SELECT * FROM emprestimos_aberto;
+
+--Histórico de empréstimos
+CREATE VIEW emprestimo_historico AS
+SELECT u.nome AS usuario, l.titulo, a.nome AS autor, e.data_emprestimo
+FROM emprestimo e
+JOIN usuario u ON e.id_usuario = u.id
+JOIN livro l ON e.id_livro = l.id
+JOIN autor a ON l.id_autor = a.id;
+
+SELECT * FROM emprestimo_historico;
+
+
+--Quantidade de empréstimos por usuário
+CREATE OR REPLACE VIEW qtd_emprestimos_por_usuario AS
+SELECT u.nome, COUNT(e.id) AS total_emprestimos
+FROM usuario u
+LEFT JOIN emprestimo e ON u.id = e.id_usuario
+GROUP BY u.nome;
+
+SELECT * FROM qtd_emprestimos_por_usuario;
+
+
+--Livros mais recentes
+CREATE OR REPLACE VIEW livros_mais_recentes AS
+SELECT l.titulo, a.nome AS autor, l.ano_publicacao
+FROM livro l
+JOIN autor a ON l.id_autor = a.id
+WHERE l.ano_publicacao > 1950;
+
+SELECT * FROM livros_mais_recentes;
+
+
+--Usuários com mais de um empréstimo
+CREATE OR REPLACE VIEW usuarios_com_mais_de_um_emprestimo AS
+SELECT u.nome, COUNT(e.id) AS qtd
+FROM usuario u
+JOIN emprestimo e ON u.id = e.id_usuario
+GROUP BY u.nome
+HAVING COUNT(e.id) > 1;
+
+SELECT * FROM usuarios_com_mais_de_um_emprestimo;
+
+
+--Autor do livro
+CREATE OR REPLACE FUNCTION autor_do_livro(p_id INT)
+RETURNS VARCHAR AS $$
+DECLARE v_autor VARCHAR;
+BEGIN
+    SELECT a.nome INTO v_autor
+    FROM livro l
+    JOIN autor a ON l.id_autor = a.id
+    WHERE l.id = p_id;
+
+    RETURN v_autor;
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT autor_do_livro(2);
+
+
+--Livro emprestado ou disponível
+CREATE OR REPLACE FUNCTION livro_emprestado(p_id INT)
+RETURNS VARCHAR AS $$
+DECLARE
+    status VARCHAR;
+    ultima_devolucao DATE;
+BEGIN
+    -- Busca a última data de devolução do livro
+    SELECT e.data_devolucao
+    INTO ultima_devolucao
+    FROM emprestimo e
+    WHERE e.id_livro = p_id
+    ORDER BY e.data_emprestimo DESC
+    LIMIT 1;
+
+    -- Se não houver devolução, o livro está emprestado
+    IF ultima_devolucao IS NULL THEN
+        status := 'Livro emprestado';
+    ELSE
+        status := 'Livro disponível';
+    END IF;
+
+    RETURN status;
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT livro_emprestado(2);
+
+
+--Usuário com atraso
+CREATE OR REPLACE FUNCTION usuario_com_atraso(p_id INT)
+RETURNS VARCHAR AS $$
+DECLARE status VARCHAR;
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM emprestimo
+        WHERE id_usuario = p_id
+          AND data_devolucao IS NULL
+          AND data_emprestimo < NOW() - INTERVAL '10 days'
+    ) THEN
+        status := 'Usuário possui livros atrasados';
+    ELSE
+        status := 'Usuário em dia';
+    END IF;
+    RETURN status;
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT usuario_com_atraso(2);
+
+
+--Total gasto por usuário
+CREATE OR REPLACE FUNCTION total_gasto_usuario(p_id INT)
+RETURNS NUMERIC AS $$
+DECLARE total NUMERIC;
+BEGIN
+    SELECT COALESCE(SUM(valor), 0) INTO total
+    FROM emprestimo
+    WHERE id_usuario = p_id;
+
+    RETURN total;
+END;
+$$ LANGUAGE plpgsql;
+
+
+SELECT total_gasto_usuario(2);
+
+
+
+
+
+
